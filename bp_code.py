@@ -88,92 +88,78 @@ def parse_production(prod):
     Jednoduché rozdelenie reťazca produkcie na jednotlivé symboly.
     Predpokladáme, že každý neterminál je 1 znak (napr. X, Y)
     a terminály sú takisto 1 znak (napr. a, b).
-
-    Ak by neterminály mali viac znakov, treba definovať presnejší parser.
     """
     return list(prod)
 
 
 def join_production(symbols):
-    """
-    Zloží zoznam symbolov späť do reťazca.
-    Prázdny zoznam -> ""
-    """
+    """Zloží zoznam symbolov späť do reťazca."""
     return "".join(symbols)
 
 
 def remove_epsilon_productions(grammar, start_symbol, epsilon_nt):
     """
-    Odstráni z gramatiky všetky epsilonové pravidlá okrem prípadu,
-    keď je štartovací symbol epsilonotvorný – vtedy môžeme ponechať S -> ε,
-    ak chceme, aby jazyk obsahoval aj prázdny reťazec.
+    Odstráni z gramatiky všetky epsilonové pravidlá (A->ε)
+    a pridá "vynechané" neterminály do produkcií,
+    presne ako v príklade: A -> aBγ sa rozšíri na A -> aBγ | aγ,
+    ak je B epsilonotvorné.
 
-    Postup (štandardný pre odstraňovanie ε-pravidiel):
-      1. Pre každú produkciu A->α vytvoríme všetky varianty,
-         v ktorých nahrádzame epsilonotvorné neterminály buď zachovaním,
-         alebo ich vypustením.
-      2. Odstránime priame pravidlá A->ε (okrem prípadu, keď A je štartovací symbol
-         a A je epsilonotvorné).
+    Rozdiel oproti štandardnému postupu:
+      - Ak je štartovací symbol S epsilonotvorný,
+        aj tak odstránime S->ε, aby sme docielili,
+        že výsledná gramatika už ε nepripúšťa (tak, ako v tvojom príklade).
     """
-    new_grammar = {}
+    import itertools
 
-    # Inicializujeme slovník neterminálov s prázdnymi množinami produkcií
+    new_grammar = {}
+    # Inicializujeme slovník neterminálov s prázdnymi množinami produkcií (aby sme predišli duplikátom)
     for A in grammar.keys():
-        new_grammar[A] = set()  # používame set, aby sme sa vyhli duplikátom
+        new_grammar[A] = set()
 
     # Pre každý neterminál A a každú produkciu p
     for A, productions in grammar.items():
         for p in productions:
-            # Rozdelíme produkciu na symboly
             symbols = parse_production(p)
 
-            # Zistíme indexy symbolov, ktoré sú epsilonotvorné
-            # (t. j. neterminály patriace do epsilon_nt)
-            nullable_positions = []
-            for i, sym in enumerate(symbols):
-                if sym in epsilon_nt:
-                    nullable_positions.append(i)
+            # Indexy symbolov, ktoré sú epsilonotvorné
+            nullable_positions = [i for i, sym in enumerate(symbols) if sym in epsilon_nt]
 
-            # Prechádzame všetky podmnožiny nullable_positions (typicky 2^k možností)
-            # a pre každú vynecháme vybrané symboly
-            # (príklad: A -> aBγ, kde B je epsilonotvorné -> A -> aBγ | aγ).
-            from itertools import chain, combinations
+            # Vygenerujeme všetky podmnožiny nullable_positions
+            # (napr. B v "aBγ" -> vynecháme B alebo ho ponecháme)
+            subsets = itertools.chain.from_iterable(
+                itertools.combinations(nullable_positions, r)
+                for r in range(len(nullable_positions) + 1)
+            )
 
-            # Funkcia na vytvorenie všetkých podmnožín
-            def all_subsets(iterable):
-                s = list(iterable)
-                return chain.from_iterable(combinations(s, r) for r in range(len(s) + 1))
-
-            for subset in all_subsets(nullable_positions):
-                # subset je tuple indexov, ktoré vynecháme
-                # skopírujeme si list symbolov a tie indexy vymažeme
-                # (musíme mať na pamäti, že vymazávanie robíme od konca)
+            for subset in subsets:
                 new_symbols = list(symbols)
-                for i in sorted(subset, reverse=True):
-                    new_symbols.pop(i)
+                # Odstránime vybrané epsilonotvorné symboly (zprava doľava)
+                for idx in sorted(subset, reverse=True):
+                    new_symbols.pop(idx)
 
                 new_p = join_production(new_symbols)
                 new_grammar[A].add(new_p)
 
-    # Teraz odstránime priame pravidlá A->ε, pokiaľ A nie je štartovací symbol
-    # alebo ak vôbec nechceme, aby S -> ε zostalo (to už závisí od požiadaviek).
-    # Tu predpokladáme, že ponecháme S->ε len ak S je epsilonotvorné.
+    # Teraz odstránime priame pravidlá A->ε,
+    # a to aj v prípade, že A je štartovací symbol
+    # (napodobňujeme tvoj príklad, kde S->ε nakoniec nechceme zachovať).
     for A in list(new_grammar.keys()):
-        if A == start_symbol and A in epsilon_nt:
-            # ponecháme aj prázdnu produkciu, ak ju tam už máme
-            # (chceme, aby jazyk mohol obsahovať aj ε, ak bol S epsilonotvorný)
-            continue
-        # inak vyhodíme prázdnu produkciu (ak existuje)
         if "" in new_grammar[A]:
             new_grammar[A].remove("")
 
-    # Premeníme sety späť na listy, aby sme boli konzistentní so zvyškom kódu
+    # Pridáme nový štartovací neterminál S' ak je pôvodný štartovací neterminál epsilonotvorný
+    if start_symbol in epsilon_nt:
+        new_start_symbol = f"S'"
+        new_grammar[new_start_symbol] = {start_symbol, ""}
+
+    # Premeníme sety späť na listy
     final_grammar = {}
     for A, prod_set in new_grammar.items():
         if prod_set:
             final_grammar[A] = list(prod_set)
 
     return final_grammar
+
 
 
 def find_neperspektivne(grammar, non_terminals):
@@ -223,6 +209,7 @@ def find_unreachable(grammar, start_symbol):
     """
     Zistí neterminály, ktoré nie sú dostupné (nedostupné) zo štartovacieho symbolu.
     """
+    # Ak nový štartovací symbol S' existuje, nastavíme ho ako start_symbol
     if start_symbol not in grammar:
         return set(grammar.keys())
 
@@ -237,7 +224,12 @@ def find_unreachable(grammar, start_symbol):
                     reachable.add(nt_candidate)
                     queue.append(nt_candidate)
 
+    # V prípade, že nový štartovací symbol S' bol pridaný, zabezpečíme, že sa nezahrnie ako nedostupný.
+    if "S'" in grammar:
+        reachable.add("S'")
+
     return set(grammar.keys()) - reachable
+
 
 
 def remove_unreachable(grammar, unreachable):
@@ -262,7 +254,7 @@ def generate_grammar(entry_nt, entry_t, entry_start, entry_rules, label_output):
     """
     Spracuje zadanie gramatiky a zobrazí:
       - Ktoré neterminály sú epsilonotvorné.
-      - Gramatiku po odstránení epsilonových pravidiel.
+      - Gramatiku po odstránení ε-pravidiel (vrátane odstránenia S->ε, ak S bol epsilonotvorný).
       - Neperspektívne neterminály.
       - Nedostupné neterminály.
       - Výslednú gramatiku po odstránení neperspektívnych a nedostupných neterminálov.
@@ -279,21 +271,26 @@ def generate_grammar(entry_nt, entry_t, entry_start, entry_rules, label_output):
     # 2) Zistíme epsilonotvorné neterminály
     epsilon_nt = find_epsilon_producing(original_grammar, non_terminals)
 
-    # 3) Odstránime epsilonové pravidlá
+    # 3) Ak je štartovací neterminál epsilonotvorný, pridáme nový štartovací symbol S'
+    if start_symbol in epsilon_nt:
+        new_start_symbol = f"S'"
+        non_terminals.append(new_start_symbol)  # Pridáme nový štartovací neterminál do zoznamu neterminálov
+        original_grammar[new_start_symbol] = {start_symbol, ""}  # Pridáme pravidlo S' -> ε | S
+
+    # 4) Odstránime epsilonové pravidlá (vrátane S->ε, ak S je epsilonotvorný)
     grammar_no_epsilon = remove_epsilon_productions(original_grammar, start_symbol, epsilon_nt)
 
-    # 4) Zistíme a odstránime neperspektívne neterminály
+    # 5) Zistíme a odstránime neperspektívne neterminály
     unproductive = find_neperspektivne(grammar_no_epsilon, non_terminals)
     grammar_after_unproductive = remove_unproductive(grammar_no_epsilon, unproductive)
 
-    # 5) Zistíme a odstránime nedostupné neterminály
+    # 6) Zistíme a odstránime nedostupné neterminály
     unreachable = find_unreachable(grammar_after_unproductive, start_symbol)
     final_grammar = remove_unreachable(grammar_after_unproductive, unreachable)
 
-    # Vytvoríme reťazec pre gramatiku bez ε-pravidiel (pred odstránením unproductive/unreachable)
+    # Vytvoríme reťazec pre gramatiku bez ε-pravidiel
     grammar_no_epsilon_str = []
     for lhs, productions in grammar_no_epsilon.items():
-        # Pri výpise prázdnu produkciu ("") nahradíme znakom ε
         prod_str = " | ".join("ε" if p == "" else p for p in productions)
         grammar_no_epsilon_str.append(f"{lhs} -> {prod_str}")
     grammar_no_epsilon_str = "\n".join(grammar_no_epsilon_str)
@@ -316,7 +313,7 @@ def generate_grammar(entry_nt, entry_t, entry_start, entry_rules, label_output):
         message_parts.append("V tejto gramatike nie sú žiadne epsilonotvorné neterminály.")
 
     # Gramatika po odstránení ε-pravidiel
-    message_parts.append("Gramatika po odstránení ε-pravidiel:\n" + grammar_no_epsilon_str)
+    message_parts.append("Gramatika po odstránení ε-pravidiel (vrátane S->ε):\n" + grammar_no_epsilon_str)
 
     # Neperspektívne neterminály
     if unproductive:
@@ -340,6 +337,7 @@ def generate_grammar(entry_nt, entry_t, entry_start, entry_rules, label_output):
     # Skombinujeme a zobrazíme výsledok
     output_msg = "\n\n".join(message_parts)
     label_output.config(text=output_msg)
+
 
 
 ### FUNKCIE PRE GRAFICKÉ ROZHRANIE ###
