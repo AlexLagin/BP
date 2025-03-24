@@ -1,6 +1,5 @@
 import tkinter as tk
-import random
-import itertools
+
 
 ### FUNKCIE PRE LOGIKU PROGRAMU ###
 
@@ -286,48 +285,57 @@ def generate_grammar(entry_nt, entry_t, entry_start, entry_rules, label_output):
       - Nedostupné neterminály.
       - Výslednú gramatiku po odstránení neperspektívnych a nedostupných neterminálov.
     """
+    # Načítame vstupy
     non_terminals = [nt.strip() for nt in entry_nt.get().split(",") if nt.strip()]
     terminals = [t.strip() for t in entry_t.get().split(",") if t.strip()]
     start_symbol = entry_start.get().strip()
     rules_input = entry_rules.get("1.0", tk.END).strip().split("\n")
 
+    # 1) Spracujeme pôvodné pravidlá do slovníka
     original_grammar = process_rules(rules_input)
 
+    # 2) Zistíme epsilonotvorné neterminály a odstránime ε-pravidlá
     epsilon_nt = find_epsilon_producing(original_grammar, non_terminals)
     grammar_no_epsilon = remove_epsilon_productions(original_grammar, start_symbol, epsilon_nt)
 
+    # 3) Odstránime jednoduché pravidlá
     simple_rules = find_simple_rules(grammar_no_epsilon)
     grammar_after_simple_rules = remove_simple_rules(grammar_no_epsilon, simple_rules)
 
-    # Merge equivalent non-terminals after removing simple rules
-    merged_grammar = merge_equivalent_non_terminals(grammar_after_simple_rules)
+    # 4) Zistíme a odstránime neperspektívne neterminály
+    unproductive = find_neperspektivne(grammar_after_simple_rules, non_terminals)
+    grammar_after_unproductive = remove_unproductive(grammar_after_simple_rules, unproductive)
 
-    unproductive = find_neperspektivne(merged_grammar, non_terminals)
-    grammar_after_unproductive = remove_unproductive(merged_grammar, unproductive)
-
+    # 5) Zistíme a odstránime nedostupné neterminály
     unreachable = find_unreachable(grammar_after_unproductive, start_symbol)
     final_grammar = remove_unreachable(grammar_after_unproductive, unreachable)
 
+    # 6) Zlúčenie ekvivalentných neterminálov
+    merged_grammar = merge_equivalent_non_terminals(final_grammar)
+
+    # Vytvoríme reťazec pre finálnu gramatiku
     final_grammar_lines = []
-    for lhs, productions in final_grammar.items():
+    for lhs, productions in merged_grammar.items():
         prod_str = " | ".join("ε" if p == "" else p for p in productions)
         final_grammar_lines.append(f"{lhs} -> {prod_str}")
     final_grammar_str = "\n".join(final_grammar_lines)
 
+    # Zostavíme správu
     message_parts = []
 
-    message_parts.append("Gramatika po odstránení ε-pravidiel (vrátane S->ε):\n" + final_grammar_str)
+    # Pridáme hlavičku s textom "Výsledná gramatika: všetky upravené pravidlá"
+    message_parts.append("Výsledná gramatika: \n")
 
+    # Zobrazíme upravenú gramatiku
     if final_grammar:
-        message_parts.append(
-            "Výsledná gramatika (po odstránení neperspektívnych a nedostupných neterminálov):\n"
-            + final_grammar_str
-        )
+        message_parts.append(final_grammar_str)
     else:
         message_parts.append("Po všetkých úpravách nezostala žiadna gramatika.")
 
-    output_msg = "\n\n".join(message_parts)
+    # Skombinujeme a zobrazíme výsledok
+    output_msg = "".join(message_parts)
     label_output.config(text=output_msg)
+
 
 ### FUNKCIE PRE GRAFICKÉ ROZHRANIE ###
 
