@@ -461,7 +461,7 @@ def setup_simplified_grammar_frame(frame, title_text):
     entry_start.pack(pady=(0, 10))
 
     # Pravidlá
-    label_rules = tk.Label(center_frame, text="Pravidlá (Backus-Naur forma):", font=LABEL_FONT, bg=BG_COLOR,
+    label_rules = tk.Label(center_frame, text="Pravidlá:", font=LABEL_FONT, bg=BG_COLOR,
                            fg=TEXT_COLOR)
     label_rules.pack()
     entry_rules = tk.Text(center_frame, width=50, height=6, font=ENTRY_FONT)
