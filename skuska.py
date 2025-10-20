@@ -661,3 +661,5 @@ setup_grammar_frame(frame_grammar1, "Zadávanie gramatiky G1")
 setup_grammar_frame(frame_grammar2, "Zadávanie gramatiky G2")
 show_frame(frame_main)
 root.mainloop()
+
+#ahoj
